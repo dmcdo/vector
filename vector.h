@@ -1,3 +1,6 @@
+#ifndef VECTOR
+#define VECTOR
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,3 +29,5 @@ void *vpop(void *vector);
 void *vinsert(void *vector, void *elem, size_t idx);
 
 void *vdelete(void *vector, size_t idx);
+
+#endif
