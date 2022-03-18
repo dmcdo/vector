@@ -83,7 +83,7 @@ void *v_set_capacity(void *vector, size_t capacity) {
 }
 
 void *v_shrink_to_fit(void *vector) {
-    v_set_capacity(vector, META(MEM(vector))->len);
+    return v_set_capacity(vector, META(MEM(vector))->len);
 }
 
 void *v_set_rate(void *vector, double rate) {
@@ -96,7 +96,7 @@ void *v_set_rate(void *vector, double rate) {
 }
 
 void *vpush(void *vector, void *elem) {
-    vinsert(vector, elem, META(MEM(vector))->len);
+    return vinsert(vector, elem, META(MEM(vector))->len);
 }
 
 void *vpop(void *vector) {
