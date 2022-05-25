@@ -1,8 +1,14 @@
 #include "vector.h"
 
-#define MEM(vector) ((void *)((vector) - sizeof(struct vmeta)))
-#define VECTOR(mem) ((void *)((mem) + sizeof(struct vmeta)))
-#define META(mem) ((struct vmeta *)((mem)))
+#define VECTORPTR char *
+#define METADATAPTR struct vmeta *
+#define OBJECTPTR char *
+
+#define FROM_VOID_VECTOR(ptr) ((VECTORPTR)ptr)
+#define FROM_VOID_OBJECT(ptr) ((OBJECTPTR)(FROM_VOID_VECTOR(ptr) - sizeof(struct vmeta)))
+#define FROM_VOID_METADATA(ptr) ((METADATAPTR)FROM_VOID_OBJECT(ptr))
+#define FROM_OBJECT_METADATA(ptr) ((METADATAPTR)ptr)
+#define FROM_OBJECT_VECTOR(ptr) ((VECTORPTR)(ptr + sizeof(struct vmeta)))
 
 #define ELEM(vector, meta, i) ((vector) + ((meta)->elem_size * (i)))
 #define SIZE(capacity, elem_size) (sizeof(struct vmeta) + ((capacity) * (elem_size)))
@@ -10,16 +16,19 @@
 #define UNSIGNED_CEIL(x) (((x) - ((size_t)(x)) == 0) ? ((size_t)(x)) : (((size_t)(x)) + 1))
 
 #define MEMSWAP(dest, src, bytes) (_memswap(((unsigned char *)(dest)), ((unsigned char *)(src)), (bytes)))
-void _memswap(unsigned char *dest, unsigned char *src, size_t bytes) {
+void _memswap(unsigned char *dest, unsigned char *src, size_t bytes)
+{
     unsigned char *end = src + bytes;
-    for (; src < end; dest++, src++) {
+    for (; src < end; dest++, src++)
+    {
         *src ^= *dest;
         *dest ^= *src;
         *src ^= *dest;
     }
 }
 
-struct vmeta {
+struct vmeta
+{
     size_t elem_size;
     size_t capacity;
     size_t len;
@@ -27,14 +36,18 @@ struct vmeta {
     void (*copyfunc)(void *, void *);
 };
 
-void *new_vector(size_t elem_size, size_t initial_capacity, void (*copyfunc)(void *, void *)) {
+void *new_vector(size_t elem_size, size_t initial_capacity, void (*copyfunc)(void *, void *))
+{
     if (initial_capacity == 0)
         initial_capacity = 1;
 
-    void *mem = malloc(SIZE(initial_capacity, elem_size));
+    OBJECTPTR obj = (OBJECTPTR)malloc(SIZE(initial_capacity, elem_size));
 
-    struct vmeta *meta = META(mem);
-    void *vector = VECTOR(mem);
+    if (obj == NULL)
+        return NULL;
+
+    METADATAPTR meta = FROM_OBJECT_METADATA(obj);
+    VECTORPTR vector = FROM_OBJECT_VECTOR(obj);
 
     meta->elem_size = elem_size;
     meta->capacity = initial_capacity;
@@ -42,112 +55,132 @@ void *new_vector(size_t elem_size, size_t initial_capacity, void (*copyfunc)(voi
     meta->rate = V_DEFAULT_RATE;
     meta->copyfunc = copyfunc;
 
-    return vector;
+    return (void *)vector;
 }
 
-void delete_vector(void *vector) {
-    free(MEM(vector));
+void delete_vector(void *ptr)
+{
+    free(FROM_VOID_OBJECT(ptr));
 }
 
-size_t vlength(void *vector) {
-    return META(MEM(vector))->len;
+size_t vlength(void *ptr)
+{
+    return FROM_VOID_METADATA(ptr)->len;
 }
 
-size_t vcapacity(void *vector) {
-    return META(MEM(vector))->capacity;
+size_t vcapacity(void *ptr)
+{
+    return FROM_VOID_METADATA(ptr)->capacity;
 }
 
-size_t vsize(void *vector) {
-    struct vmeta *meta = META(MEM(vector));
-
+size_t vsize(void *ptr)
+{
+    METADATAPTR meta = FROM_VOID_METADATA(ptr);
     return SIZE(meta->capacity, meta->elem_size);
 }
 
-void *v_set_capacity(void *vector, size_t capacity) {
+void *v_set_capacity(void *ptr, size_t capacity)
+{
     if (capacity == 0)
         capacity = 1;
 
-    void *mem = MEM(vector);
-    struct vmeta *meta = META(mem);
+    OBJECTPTR obj = FROM_VOID_OBJECT(ptr);
+    METADATAPTR meta = FROM_OBJECT_METADATA(obj);
 
     if (capacity < meta->len)
         return NULL;
-    
-    mem = realloc(mem, SIZE(capacity, meta->elem_size));
 
-    if (mem == NULL)
+    obj = (OBJECTPTR)realloc(obj, SIZE(capacity, meta->elem_size));
+
+    if (obj == NULL)
         return NULL;
-    
-    META(mem)->capacity = capacity;
-    return VECTOR(mem);
+
+    FROM_OBJECT_METADATA(obj)->capacity = capacity;
+    return (void *)FROM_OBJECT_VECTOR(obj);
 }
 
-void *v_shrink_to_fit(void *vector) {
-    return v_set_capacity(vector, META(MEM(vector))->len);
+void *v_shrink_to_fit(void *ptr)
+{
+    return v_set_capacity(ptr, FROM_VOID_METADATA(ptr)->len);
 }
 
-void *v_set_rate(void *vector, double rate) {
-    if (rate > 1) {
-        META(MEM(vector))->rate = rate;
-        return vector;
+void *v_set_rate(void *ptr, double rate)
+{
+    if (rate > 1)
+    {
+        FROM_VOID_METADATA(ptr)->rate = rate;
+        return ptr;
     }
-    
+
     return NULL;
 }
 
-void *vpush(void *vector, void *elem) {
-    return vinsert(vector, elem, META(MEM(vector))->len);
+void *vpush(void *ptr, void *elem)
+{
+    return vinsert(ptr, elem, FROM_VOID_METADATA(ptr)->len);
 }
 
-void *vpop(void *vector) {
-    struct vmeta *meta = META(MEM(vector));
-
-    return ELEM(vector, meta, --meta->len);
+void *vpop(void *ptr)
+{
+    METADATAPTR meta = FROM_VOID_METADATA(ptr);
+    VECTORPTR vec = FROM_VOID_VECTOR(ptr);
+    return ELEM(vec, meta, --meta->len);
 }
 
-void *vinsert(void *vector, void *elem, size_t idx) {
-    void *mem = MEM(vector);
-    struct vmeta *meta = META(mem);
+void *vinsert(void *ptr, void *elem, size_t idx)
+{
+    OBJECTPTR obj = FROM_VOID_OBJECT(ptr);
+    METADATAPTR meta = FROM_OBJECT_METADATA(obj);
+    VECTORPTR vec = FROM_VOID_VECTOR(ptr);
 
     if (idx > meta->len)
         return NULL;
 
-    if (meta->len >= meta->capacity) {
-        vector = v_set_capacity(vector, UNSIGNED_CEIL(meta->rate * meta->capacity));
+    if (meta->len >= meta->capacity)
+    {
+        ptr = v_set_capacity(ptr, UNSIGNED_CEIL(meta->rate * meta->capacity));
 
-        if (vector == NULL)
+        if (ptr == NULL)
             return NULL;
-        
-        mem = MEM(vector);
-        meta = META(mem);
+
+        vec = FROM_VOID_VECTOR(ptr);
+        obj = FROM_VOID_OBJECT(ptr);
+        meta = FROM_OBJECT_METADATA(obj);
     }
 
-    void *end = ELEM(vector, meta, meta->len);
+    void *end = ELEM(vec, meta, meta->len);
 
-    if (meta->copyfunc) {
+    if (meta->copyfunc)
+    {
         meta->copyfunc(end, elem);
-    } else {
+    }
+    else
+    {
         memcpy(end, elem, meta->elem_size);
     }
 
-    for (size_t i = idx; i < meta->len; i++) {
-        MEMSWAP(end, ELEM(vector, meta, i), meta->elem_size);
+    for (size_t i = idx; i < meta->len; i++)
+    {
+        MEMSWAP(end, ELEM(vec, meta, i), meta->elem_size);
     }
 
     meta->len++;
-    return vector;
+    return ptr;
 }
 
-void *vdelete(void *vector, size_t idx) {
-    struct vmeta *meta = META(MEM(vector));
+void *vdelete(void *ptr, size_t idx)
+{
+    METADATAPTR meta = FROM_VOID_METADATA(ptr);
+    VECTORPTR vec = FROM_VOID_VECTOR(ptr);
 
     if (idx >= meta->len)
         return NULL;
 
     meta->len--;
-    for (size_t i = idx; i < meta->len; i++) {
-        memcpy(ELEM(vector, meta, i), ELEM(vector, meta, i + 1), meta->elem_size);
+    for (size_t i = idx; i < meta->len; i++)
+    {
+        memcpy(ELEM(vec, meta, i), ELEM(vec, meta, i + 1), meta->elem_size);
     }
 
-    return vector;
+    return ptr;
 }
